@@ -56,7 +56,7 @@ options:
     aliases: []
   template:
     description:
-      - the path of the cloudformation template
+      - the path of the cloudformation template (it may be jinja2 file with ex. name 'autoscaling.json.j2' - .j2 is required as e suffix)
     required: true
     default: null
     aliases: []
@@ -95,6 +95,12 @@ options:
     required: false
     aliases: ['aws_region', 'ec2_region']
     version_added: "1.5"
+  j2_vars_file:
+    description:
+      - the path of the jinja2 variables file
+    required: false
+    default: null
+    aliases: []
 
 requirements: [ "boto" ]
 author: James S. Martin
@@ -121,6 +127,9 @@ tasks:
 
 import json
 import time
+
+from jinja2 import Template
+import yaml
 
 try:
     import boto
@@ -151,6 +160,7 @@ def boto_version_required(version_tuple):
     except:
         boto_version.append(-1)
     return tuple(boto_version) >= tuple(version_tuple)
+
 
 
 def stack_operation(cfn, stack_name, operation):
@@ -190,6 +200,14 @@ def stack_operation(cfn, stack_name, operation):
     return result
 
 
+def cfn_renderer(jinja_temp_fname,j2_vars):
+    with open(j2_vars) as vars_f:
+        config = yaml.load(vars_f)
+    template = Template(open(jinja_temp_fname).read())
+
+    return template.render(config)
+
+
 def main():
     argument_spec = ec2_argument_spec()
     argument_spec.update(dict(
@@ -198,6 +216,7 @@ def main():
             state=dict(default='present', choices=['present', 'absent']),
             template=dict(default=None, required=True),
             stack_policy=dict(default=None, required=False),
+            j2_vars_file=dict(default=None, required=False),
             disable_rollback=dict(default=False, type='bool'),
             tags=dict(default=None)
         )
@@ -209,7 +228,23 @@ def main():
 
     state = module.params['state']
     stack_name = module.params['stack_name']
-    template_body = open(module.params['template'], 'r').read()
+
+    # Lets create CFN template if jinja2 template is used in playbook other
+    #   wise just use CFN template as it is.
+    if module.params['template'].endswith(".j2"):
+        if module.params['j2_vars_file'] is not None:
+            template_body = cfn_renderer(module.params['template'],
+                                         module.params['j2_vars_file'])
+        else:
+            print(json.dumps({
+                    "failed": True,
+                    "msg"   : "With jinja2 temlates used as CFN templates you \
+have to specify 'j2_vars_file' module parameter"
+            }))
+            sys.exit(1)
+    else:
+        template_body = open(module.params['template'], 'r').read()
+
     if module.params['stack_policy'] is not None:
         stack_policy_body = open(module.params['stack_policy'], 'r').read()
     else:
