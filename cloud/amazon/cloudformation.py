@@ -101,6 +101,12 @@ options:
     required: false
     default: null
     aliases: []
+  j2_dump_json:
+    description:
+      - if true after jinja2 run will dump whole json template to stdout
+    required: false
+    default: null
+    aliases: []
 
 requirements: [ "boto" ]
 author: James S. Martin
@@ -121,6 +127,8 @@ tasks:
       DiskType: "ephemeral"
       InstanceType: "m1.small"
       ClusterSize: 3
+      j2_vars_file: "../vars/env.yml"
+      j2_dump_json: true
     tags:
       Stack: "ansible-cloudformation"
 '''
@@ -217,6 +225,7 @@ def main():
             template=dict(default=None, required=True),
             stack_policy=dict(default=None, required=False),
             j2_vars_file=dict(default=None, required=False),
+            j2_dump_json=dict(default=False, required=False),
             disable_rollback=dict(default=False, type='bool'),
             tags=dict(default=None)
         )
@@ -235,6 +244,10 @@ def main():
         if module.params['j2_vars_file'] is not None:
             template_body = cfn_renderer(module.params['template'],
                                          module.params['j2_vars_file'])
+            if module.params['j2_dump_json']:
+                print(json.dumps({
+                    "msg": template_body
+                }))
         else:
             print(json.dumps({
                     "failed": True,
